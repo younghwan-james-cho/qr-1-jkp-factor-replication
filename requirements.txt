@@ -1,4 +1,8 @@
+# Compatibility export; pyproject.toml and uv.lock are authoritative.
 matplotlib==3.10.6
 numpy==2.3.3
 polars==1.34.0
 wrds==3.4.0
+pandas==2.2.3
+pyarrow==21.0.0
+pyparsing==3.2.5
