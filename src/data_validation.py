@@ -1,37 +1,27 @@
-# src/data_validation.py
-#
-# Functions for validating the raw input data.
-#
+"""Fail-closed structural checks; these do not certify the research methodology."""
 
 import polars as pl
 
+
 def validate_raw_data(df: pl.DataFrame) -> None:
-    """
-    Performs a series of validation checks on the raw characteristic data.
-    Raises a ValueError for critical failures but only warns for non-critical issues.
-    
-    Args:
-        df (pl.DataFrame): The raw data to validate.
-    """
-    print("--- Running Raw Data Validation Checks ---")
-        
-    # Check 1: Critical identifiers. These MUST NOT be null.
-    critical_id_cols = ['eom', 'id']
-    id_null_counts = df.select(pl.col(critical_id_cols).is_null().sum()).row(0)
-    for i, col in enumerate(critical_id_cols):
-        if id_null_counts[i] > 0:
-            raise ValueError(f"CRITICAL Validation failed: Column '{col}' contains {id_null_counts[i]} null values.")
-
-    # Check 2: Important data columns. Nulls are undesirable but can be cleaned
-    data_cols_to_check = ['me', 'ret_exc_lead1m']
-    data_null_counts = df.select(pl.col(data_cols_to_check).is_null().sum()).row(0)
-    for i, col in enumerate(data_cols_to_check):
-        if data_null_counts[i] > 0:
-            print(f"Warning: Column '{col}' contains {data_null_counts[i]} null values. These will be dropped in the portfolio construction step.")
-            
-    # Check 3: Check for unrealistic return values.
-    max_ret = df.select(pl.col('ret_exc_lead1m').abs().max()).item()
-    if max_ret > 10.0:
-        print(f"Warning: Maximum absolute monthly return is {(max_ret*100):.2f}%, which is unusually high.")
-
-    print("Raw data validation checks complete.")
+    required = {"eom", "id", "me", "ret_exc_lead1m"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing required columns: {sorted(missing)}")
+    if df.is_empty():
+        raise ValueError("Raw data is empty")
+    if any(df[col].null_count() for col in ("eom", "id")):
+        raise ValueError("Null observation keys")
+    if df.select(pl.struct("eom", "id").is_duplicated().any()).item():
+        raise ValueError("Duplicate (eom, id) observations")
+    if df.schema["eom"] != pl.Date:
+        raise ValueError("eom must be a Date")
+    if df.select((pl.col("eom") != pl.col("eom").dt.month_end()).any()).item():
+        raise ValueError("eom must contain month-end dates")
+    for column in ("me", "ret_exc_lead1m"):
+        if not df.schema[column].is_numeric():
+            raise ValueError(f"{column} must be numeric")
+        if df.select((pl.col(column).is_not_null() & ~pl.col(column).is_finite()).any()).item():
+            raise ValueError(f"Non-finite {column}")
+    if df.select((pl.col("me") <= 0).any()).item():
+        raise ValueError("Market equity must be positive when observed")

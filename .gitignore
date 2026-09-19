@@ -23,3 +23,7 @@ config/wrds_config.py
 
 # Ignore local documentation and papers
 docs/
+.venv/
+.pytest_cache/
+.ruff_cache/
+runs/
