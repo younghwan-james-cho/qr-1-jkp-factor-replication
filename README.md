@@ -59,7 +59,8 @@ without changing data or historical plots. CI runs on PRs and main pushes.
 - The existing single-sort convention is retained: Polars **nearest** quantiles,
   NYSE 20/80 size cutoffs computed from screened data, characteristic terciles
   among non-micro stocks, at least five stocks per long/short leg, EW/VW/capped-VW,
-  and source-CRSP return cutoffs at 0.1/99.9 percentiles. Invalid direction or
+  and source-CRSP return cutoffs at 0.1/99.9 percentiles. VW weights are rescaled
+  within each portfolio before normalization to prevent denominator overflow. Invalid direction or
   unavailable winsorization references fail instead of silently changing meaning.
 - Screening still depends on available lead returns, and reference cutoffs are
   computed after characteristic-specific screening. Their equivalence to the

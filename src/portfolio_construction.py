@@ -134,35 +134,27 @@ def construct_factor_portfolio(
 
     if weighting_scheme == "ew":
         weighting_expr = pl.mean("ret_exc_lead1m").alias("port_ret")
-    elif weighting_scheme == "vw":
+    else:
+        weights = pl.col("me")
+        if weighting_scheme == "vw_cap":
+            weights = pl.min_horizontal("me", "me_p80")
+        # A common positive scale leaves normalized weights unchanged and avoids
+        # overflow when a valid market-equity unit makes the raw sum too large.
+        scaled_weights = weights / weights.max()
         weighting_expr = (
-            ((pl.col("me") / pl.col("me").sum()) * pl.col("ret_exc_lead1m")).sum().alias("port_ret")
-        )
-    elif weighting_scheme == "vw_cap":
-        weighting_expr = (
-            (
-                (
-                    pl.when(pl.col("me") > pl.col("me_p80"))
-                    .then(pl.col("me_p80"))
-                    .otherwise(pl.col("me"))
-                    / pl.when(pl.col("me") > pl.col("me_p80"))
-                    .then(pl.col("me_p80"))
-                    .otherwise(pl.col("me"))
-                    .sum()
-                )
-                * pl.col("ret_exc_lead1m")
-            )
+            ((scaled_weights / scaled_weights.sum()) * pl.col("ret_exc_lead1m"))
             .sum()
             .alias("port_ret")
         )
-    else:
-        raise ValueError(f"Unknown weighting scheme: {weighting_scheme}")
 
     portfolio_returns = (
         char_df.group_by(["eom", "portfolio"])
         .agg(weighting_expr, pl.len().alias("n_stocks"))
         .sort("eom")
     )
+
+    if not portfolio_returns["port_ret"].is_finite().all():
+        raise ValueError("Non-finite portfolio returns")
 
     portfolio_returns_wide = portfolio_returns.pivot(
         index="eom", on="portfolio", values=["port_ret", "n_stocks"]

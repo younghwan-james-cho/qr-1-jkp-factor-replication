@@ -204,3 +204,23 @@ def test_end_to_end_synthetic_run_with_real_plots_and_receipts(tmp_path, monkeyp
     assert (output / "plots/value_ew.png").stat().st_size > 1000
     for name, digest in receipt["output_sha256"].items():
         assert runner._sha256(output / name) == digest
+
+
+@pytest.mark.parametrize("scheme", ["vw", "vw_cap"])
+@pytest.mark.parametrize("scale", [1e306, 1e-200])
+def test_weighted_returns_are_invariant_to_market_equity_units(tmp_path, panel, scheme, scale):
+    path = tmp_path / "panel.parquet"
+    panel.write_parquet(path)
+    expected = construct_factor_portfolio(path, "signal", "factor", scheme)["factor"].item()
+    panel.with_columns(pl.col("me") * scale).write_parquet(path)
+    actual = construct_factor_portfolio(path, "signal", "factor", scheme)["factor"].item()
+    assert actual == pytest.approx(expected, abs=1e-14)
+
+
+@pytest.mark.parametrize("value", [0.0, -1.0])
+def test_raw_market_equity_guard_is_not_masked_by_later_portfolio_failure(panel, value):
+    frame = panel.with_columns(
+        pl.when(pl.col("id") == 0).then(pl.lit(value)).otherwise(pl.col("me")).alias("me")
+    )
+    with pytest.raises(ValueError, match="Market equity must be positive"):
+        validate_raw_data(frame)
